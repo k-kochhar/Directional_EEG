@@ -8,6 +8,7 @@ import pandas as pd
 import seaborn as sns
 import os
 from tqdm import tqdm
+import mne
 
 
 def compute_channel_importance(model, dataloader):
@@ -109,6 +110,8 @@ def compute_channel_importance(model, dataloader):
     
     # Create ranking (descending order of importance)
     combined_ranking = np.argsort(combined_importance)[::-1]
+
+
     
     # Create visualizations
     create_visualizations(first_layer_importance, second_layer_importance, combined_importance, combined_ranking)
@@ -211,6 +214,43 @@ def create_visualizations(first_layer_importance, second_layer_importance, combi
         print(f"{i+1}. Channel {ch}: {combined_importance[ch]:.4f}")
 
 
+# Function to plot topomap with channel locations
+def plot_topomap_with_locations(channel_importance, title='EEG Channel Topomap', save_path='IMAGES/topomap.png'):
+    """
+    Visualize EEG channel importance using a topographic map with standard 10-20 layout.
+
+    Args:
+        channel_importance: (64,) array of importance values
+        title: Title of the plot
+        save_path: File path to save the plot
+    """
+    import mne
+
+    # Create standard 10-20 montage
+    montage = mne.channels.make_standard_montage('standard_1020')
+    ch_names = montage.ch_names[:64]  # limit to 64 channels
+
+    # Create MNE Info object
+    info = mne.create_info(ch_names=ch_names, sfreq=128, ch_types='eeg')
+    info.set_montage(montage)
+
+    # Create fake Evoked object with importance as "data"
+    normalized = (channel_importance - np.mean(channel_importance)) / np.std(channel_importance)
+    evoked = mne.EvokedArray(normalized.reshape(-1, 1), info)
+    evoked.set_montage(montage)
+
+    # Plot topomap
+    fig = evoked.plot_topomap(
+        times=[0], size=3, scalings=1, 
+        time_format='', cmap='Reds', show=False,
+    )
+    fig.suptitle(title, fontsize=14)
+
+    # Save figure
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    fig.savefig(save_path, dpi=300)
+    print(f"Saved topomap to {save_path}")
+
 def main(model_path='eeg_angle_prediction_model.pth', data_folder='DATA'):
     """
     Main function to run the channel importance analysis.
@@ -249,7 +289,7 @@ def main(model_path='eeg_angle_prediction_model.pth', data_folder='DATA'):
         
         # Run the analysis
         results = compute_channel_importance(model, dataloader)
-        
+        plot_topomap_with_locations(results['combined'])
         print("\nAnalysis complete. Results saved in IMAGES directory.")
         
     except Exception as e:
